@@ -1,0 +1,19 @@
+1.doctor portal all services add to available services
+# find a all serivce to data base
+# all services map and a seleted one single services
+# and then find to all bookingCollection to database
+# and bookingCollection filter inside services forEach
+# filter a bookingCollection and services and return value move to a array
+# another filter data set to service.booked object.
+# then set to a services available data in objcet services.available 
+# and then filter a all service slots filter to booked array to includes and find to all booking slots
+# and then add to services object service.available
+
+// Available service step
+// step 1: get all services
+// step 2: get the booking to that day
+//step 3: for each service,find booking for the services
+//step 4: find booking for that services outPut : [{},{},{},{}]
+// step 5: select slots for the service booking: ['','','','']
+// step 6: select those slots that are not in bookedSlots
+// step 7: set available to slots to make it easier
