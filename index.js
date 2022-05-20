@@ -8,6 +8,7 @@ const {
 } = require('mongodb');
 const app = express()
 const port = process.env.PORT || 5000
+var jwt = require('jsonwebtoken');
 
 //heroku deploy api link
 // https://arcane-brook-53779.herokuapp.com/
@@ -24,11 +25,103 @@ const client = new MongoClient(uri, {
     useUnifiedTopology: true,
     serverApi: ServerApiVersion.v1
 });
+/* 
+    API Naming Convention
+    app.get('/booking') // get all booking in this collection.or get more then  one or by filter
+    app.get('/booking/:id') // get a specific booking
+    app.post('/booking') // add a new booking
+    app.put('/booking/:id') //upsert  ==> update (if exists) or insert (if doesn't exist)
+    app.Patch('/booking/:id') *
+    app.delete('/booking/:id')
+*/
+const verifyToken = (req, res, next) => {
+    const authorization = req.headers['authorization']
+    const token = authorization && authorization.split(' ')[1]
+    if (!token) return res.status(403).send({
+        message: "Forbidden access",
+        status: 403
+    })
+    jwt.verify(token, process.env.JWT_SCRECT, (err, decoded) => {
+        if (err) return res.status(403).send({
+            message: "Forbidden access",
+            status: 403
+        })
+        req.decoded = decoded
+        next()
+    })
+}
 const run = async () => {
     try {
         await client.connect()
         const serviceCollection = client.db('doctorPortal').collection('services');
         const bookingCollection = client.db('doctorPortal').collection('Booking')
+        const userCollection = client.db('doctorPortal').collection('user')
+        app.get('/user',verifyToken,async (req,res) => {
+            const user = await userCollection.find().toArray()
+            res.send(user)
+        })
+        // user collection
+        app.put('/user/admin/:email',verifyToken, async (req, res) => {
+            const email = req.params.email
+            const requester = req.decoded.email
+            const requestedAccount = await userCollection.findOne({email: requester})
+            if(requestedAccount.role === 'admin'){
+                const filter = {
+                    email: email
+                }
+                const updateDoc = {
+                    $set: {role: 'admin'},
+                };
+                const result = await userCollection.updateOne(filter, updateDoc)
+                res.send(result)
+            }else{
+                res.status(403).send({message: 'forbidden'})
+            }
+        })
+        app.get('/admin/:email',async(req,res) => {
+            const email = req.params.email
+            const user = await userCollection.findOne({email})
+            const isAdmin = user.role === 'admin'
+            res.send({admin: isAdmin})
+        })
+        app.put('/user/:email', async (req, res) => {
+            const email = req.params.email
+            const user = req.body
+            const filter = {
+                email: email
+            }
+            const options = {
+                upsert: true
+            }
+            const updateDoc = {
+                $set: user,
+            };
+            const result = await userCollection.updateOne(filter, updateDoc, options)
+            var token = jwt.sign({
+                email: email
+            }, process.env.JWT_SCRECT, {
+                expiresIn: '1d'
+            });
+            res.send({
+                result,
+                token
+            })
+        })
+
+        // get booking query
+        app.get('/booking', verifyToken, async (req, res) => {
+            const email = req.query.email
+            const decoded = req.decoded.email
+            if(decoded === email) {
+                const patientEmail = {
+                    patientEmail: email
+                }
+                const result = await bookingCollection.find(patientEmail).toArray()
+                return res.send(result)
+            }else{
+                return res.status(403).send({message: "Forbidden access"})
+            }
+        })
         app.post('/booking', async (req, res) => {
             const booking = req.body
             const query = {
@@ -64,7 +157,9 @@ const run = async () => {
             // step 1: get all services
             const date = req.query.date || "May 17, 2022"
             const services = await serviceCollection.find().toArray()
-            const query = { date: date }
+            const query = {
+                date: date
+            }
             // step 2: get the booking to that day
             const bookings = await bookingCollection.find(query).toArray()
             // step 3: for each service
@@ -81,6 +176,21 @@ const run = async () => {
             })
             res.send(services)
         })
+        // practice available services
+        // app.get("/available" ,async(req,res) => {
+        //     const date = req.query.date || "May 17, 2022"
+        //     const allServices = await serviceCollection.find().toArray()
+        //     const booking = await bookingCollection.find({date: date }).toArray()
+        //     allServices.forEach(service => {
+        //         const booked = booking.filter(b => {
+        //             return b.treatment === service.name
+        //         })
+        //         const bookedSlot = booked.map(s => s.slot)
+        //         console.log(bookedSlot)
+        //         service.slots = service.slots.filter(sl => !bookedSlot.includes(sl))
+        //     });
+        //     res.send(allServices)
+        // })
     } finally {
 
     }
