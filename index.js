@@ -3,8 +3,7 @@ const cors = require('cors')
 require('dotenv').config()
 const {
     MongoClient,
-    ServerApiVersion,
-    ObjectId
+    ServerApiVersion
 } = require('mongodb');
 const app = express()
 const port = process.env.PORT || 5000
@@ -56,33 +55,49 @@ const run = async () => {
         const serviceCollection = client.db('doctorPortal').collection('services');
         const bookingCollection = client.db('doctorPortal').collection('Booking')
         const userCollection = client.db('doctorPortal').collection('user')
-        app.get('/user',verifyToken,async (req,res) => {
+        const doctorCollection = client.db('doctorPortal').collection('doctor')
+        // middle ware to verifyAdmin
+        const verifyAdmin = async (req, res, next) => {
+            const requester = req.decoded.email
+            const requesterAccount = await userCollection.findOne({
+                email: requester
+            })
+            if (requesterAccount.role === 'admin') {
+                next()
+            } else {
+                res.status(403).send({
+                    message: 'forbidden'
+                })
+            }
+        }
+        // find to userCollection
+        app.get('/user', verifyToken, async (req, res) => {
             const user = await userCollection.find().toArray()
             res.send(user)
         })
         // user collection
-        app.put('/user/admin/:email',verifyToken, async (req, res) => {
+        app.put('/user/admin/:email', [verifyToken,verifyAdmin], async (req, res) => {
             const email = req.params.email
-            const requester = req.decoded.email
-            const requestedAccount = await userCollection.findOne({email: requester})
-            if(requestedAccount.role === 'admin'){
-                const filter = {
-                    email: email
-                }
-                const updateDoc = {
-                    $set: {role: 'admin'},
-                };
-                const result = await userCollection.updateOne(filter, updateDoc)
-                res.send(result)
-            }else{
-                res.status(403).send({message: 'forbidden'})
+            const filter = {
+                email: email
             }
+            const updateDoc = {
+                $set: {
+                    role: 'admin'
+                },
+            };
+            const result = await userCollection.updateOne(filter, updateDoc)
+            res.send(result)
         })
-        app.get('/admin/:email',async(req,res) => {
+        app.get('/admin/:email', async (req, res) => {
             const email = req.params.email
-            const user = await userCollection.findOne({email})
+            const user = await userCollection.findOne({
+                email
+            })
             const isAdmin = user.role === 'admin'
-            res.send({admin: isAdmin})
+            res.send({
+                admin: isAdmin
+            })
         })
         app.put('/user/:email', async (req, res) => {
             const email = req.params.email
@@ -112,14 +127,16 @@ const run = async () => {
         app.get('/booking', verifyToken, async (req, res) => {
             const email = req.query.email
             const decoded = req.decoded.email
-            if(decoded === email) {
+            if (decoded === email) {
                 const patientEmail = {
                     patientEmail: email
                 }
                 const result = await bookingCollection.find(patientEmail).toArray()
                 return res.send(result)
-            }else{
-                return res.status(403).send({message: "Forbidden access"})
+            } else {
+                return res.status(403).send({
+                    message: "Forbidden access"
+                })
             }
         })
         app.post('/booking', async (req, res) => {
@@ -145,7 +162,10 @@ const run = async () => {
         })
         app.get('/services', async (req, res) => {
             const query = req.query
-            const cursor = serviceCollection.find(query)
+            const cursor = serviceCollection.find(query).project({
+                name: 1,
+                _id: 0
+            })
             const result = await cursor.toArray()
             res.send(result)
         })
@@ -191,6 +211,29 @@ const run = async () => {
         //     });
         //     res.send(allServices)
         // })
+
+        // post a doctor
+        app.post('/doctor', [verifyToken, verifyAdmin], async (req, res) => {
+            const doctor = req.body
+            console.log(doctor)
+            const result = await doctorCollection.insertOne(doctor)
+            res.send(result)
+        })
+
+        // find to all doctor data
+        app.get('/doctor',verifyToken,verifyAdmin, async(req,res) => {
+            const query = req.query
+            const result = await doctorCollection.find(query).toArray()
+            res.send(result)
+        })
+        // doctors delete
+        app.delete('/doctor/:email',verifyToken,verifyAdmin, async(req,res) => {
+            const email = req.params.email
+            console.log(email)
+            const filter = {email: email}
+            const result = await doctorCollection.deleteOne(filter)
+            res.send(result)
+        })
     } finally {
 
     }
